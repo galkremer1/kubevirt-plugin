@@ -1,4 +1,4 @@
-import { TEST_NS } from '../../utils/const/index';
+import { ACTION_TIMEOUT, TEST_NS } from '../../utils/const/index';
 import { Example } from '../../utils/const/string';
 import { colName, favName } from '../../views/actions';
 import * as cView from '../../views/selector-catalog';
@@ -77,6 +77,18 @@ describe('Test filter in InstanceType', () => {
 });
 
 describe('Test filter in Templates', () => {
+  // Cypress does not reset catalog filter state between tests. If a test fails
+  // before unchecking the Boot source filter, it stays applied and hides
+  // templates from later tests. Reset it after every test as a safety net.
+  afterEach(() => {
+    cy.get('body').then(($body) => {
+      const $checkbox = $body.find(`${cView.BootSource} ${cView.checkbox}`);
+      if ($checkbox.is(':checked')) {
+        cy.wrap($checkbox).uncheck();
+      }
+    });
+  });
+
   it('visit catalog template tab', () => {
     cy.get(cView.templateTab).click();
   });
@@ -116,7 +128,13 @@ describe('Test filter in Templates', () => {
 
   it('filter VM catalog by template boot source', () => {
     cy.get(cView.BootSource).find(cView.checkbox).check();
-    cy.get(cView.GRID).find(cardTitleV6).should('contain', 'CentOS Stream 9');
+    // On a freshly provisioned cluster the golden-image imports that back the
+    // default templates may still be in progress, so wait up to the import
+    // timeout for a boot source to become available before asserting. Fedora is
+    // the only golden image provisioned on the 4.22 hot cluster.
+    cy.get(cView.GRID, { timeout: ACTION_TIMEOUT.IMPORT })
+      .find(cardTitleV6, { timeout: ACTION_TIMEOUT.IMPORT })
+      .should('contain', 'Fedora');
     cy.get(cView.BootSource).find(cView.checkbox).uncheck();
   });
 
@@ -133,7 +151,9 @@ describe('Test filter in Templates', () => {
 
   it('show all templates', () => {
     cy.get(cView.allItems).click();
-    cy.contains('CentOS Stream 9').should('exist');
+    // Scope to the grid card titles: an unscoped cy.contains('Fedora') would
+    // match the sidebar Fedora OS-filter label and pass trivially.
+    cy.get(cView.GRID).find(cardTitleV6).should('contain', 'Fedora');
   });
 
   it('check templates per project', () => {
